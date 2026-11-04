@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script>
+        async function getDataFromAPI(){
+            let response = await fetch('http://202.44.40.193/~aws/JSON/priv_hos.json');
+            let rawdata = await response.text();
+            let objData = JSON.parse(rawdata);
+            let result = document.getElementById("result");
+            for(let i=0;i<objData.features.length;i++){
+                let content = "ชื่อโรงพยาบาล :"+objData.features[i].properties.name+"("+objData.features[i].properties.num_bed+" เตียง)";
+                let li = document.createElement("li");
+                li.innerHTML = content;
+                result.appendChild(li);
+            }
+        }
+        getDataFromAPI();
+    </script>
+</head>
+<body>
+    <h1>โรงพยาบาลเอกชนใน กทม.</h1>
+    <ul id="result"></ul>
+</body>
+</html>

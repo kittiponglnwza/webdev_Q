@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="style.css">
+<script>
+	let xmlHttpUsername,xmlHttpEmail;
+
+	function checkUsername() {
+		document.getElementById("username").className = "thinking";
+		xmlHttpUsername = new XMLHttpRequest();
+		xmlHttpUsername.onreadystatechange = showUsernameStatus;
+		
+		var username = document.getElementById("username").value;
+		var url = "checkName.php?username=" + username;
+		xmlHttpUsername.open("GET", url);
+		xmlHttpUsername.send();
+	}
+
+	function showUsernameStatus() {
+		if (xmlHttpUsername.readyState == 4 && xmlHttpUsername.status == 200) {
+			if (xmlHttpUsername.responseText == "okay") {
+				document.getElementById("username").className = "approved";
+
+			} else {
+				document.getElementById("username").className = "denied";
+				document.getElementById("username").focus();
+				document.getElementById("username").select();
+			}
+		}
+	}
+	function checkEmail(){
+		document.getElementById("email").className = "thinking";
+		xmlHttpEmail = new XMLHttpRequest();
+		xmlHttpEmail.onreadystatechange = showEmailStatus;
+		let email = document.getElementById("email").value;
+		let url = "checkEmail.php?email="+email;
+		xmlHttpEmail.open("GET",url);
+		xmlHttpEmail.send();
+	}
+	function showEmailStatus(){
+		if(xmlHttpEmail.readyState==4&&xmlHttpEmail.status==200){
+			if(xmlHttpEmail.responseText=="okay"){
+				document.getElementById("email").className = "approved";
+			}
+			else{
+				document.getElementById("email").className = "denied";
+				document.getElementById("email").focus();
+				document.getElementById("email").select();
+			}
+		}
+	}
+</script>
+</head>
+
+<body>
+	<form>
+		<h1>Please register:</h1>
+		Username:<input id="username" type="text" onblur="checkUsername()"><br>
+		First Name:<input type="text" name="firstname"><br> 
+		Last Name:<input type="text" name="lastname"><br> 
+		Email:<input type="text" name="email" id="email" onblur="checkEmail()"><br> 
+		<input type="submit" value="Register">
+	</form>
+</body>
+</html>

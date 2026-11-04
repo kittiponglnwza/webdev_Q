@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>ข้อ 2 B (ใช้ AJAX)</title>
+    <script>
+        // =============================================================
+        // ข้อ 2 - B. ใช้ AJAX (Client-Side Rendering)
+        // คอนเซปต์: หน้าเว็บโหลดโครงสร้าง HTML เปล่าๆ มาก่อน จากนั้นใช้ JavaScript
+        // ส่งคำขอแบบ Asynchronous (AJAX) ไปดึงไฟล์ JSON มาสร้างแถวตารางใน DOM
+        // =============================================================
+
+        async function loadHospitals() {
+            // 1. ส่งคำขอ AJAX ไปดึงไฟล์ JSON แบบ Asynchronous ด้วย fetch()
+            let res = await fetch('priv_hos.json');
+
+            // 2. แปลง response ข้อความให้เป็น JavaScript Object
+            let data = await res.json();
+
+            // 3. ชี้เป้าหมายตารางที่มี id="table" เพื่อเตรียมแทรกแถวใหม่
+            let table = document.getElementById("table");
+
+            // 4. วนลูปข้อมูลใน features แต่ละตัว (h = โรงพยาบาล, i = ลำดับเริ่มจาก 0)
+            data.features.forEach((h, i) => {
+                let bed = h.properties.num_bed; // ดึงจำนวนเตียง
+
+                // ตรวจสอบเงื่อนไขตามจำนวนเตียง:
+                // - ขนาดใหญ่: ตั้งแต่ 91 เตียงขึ้นไป
+                // - ขนาดกลาง: 31 ถึง 90 เตียง
+                // - ขนาดเล็ก: ไม่เกิน 30 เตียง
+                let big   = (bed >= 91) ? "✔" : "";
+                let mid   = (bed >= 31 && bed <= 90) ? "✔" : "";
+                let small = (bed <= 30) ? "✔" : "";
+
+                // 5. สร้างแท็ก <tr> (แถวตาราง)
+                let tr = document.createElement("tr");
+
+                // 6. ใส่ข้อมูลแต่ละคอลัมน์ลงใน <tr>
+                tr.innerHTML = `<td>${i + 1}.</td>
+                                <td>${h.properties.name}</td>
+                                <td align="center">${big}</td>
+                                <td align="center">${mid}</td>
+                                <td align="center">${small}</td>`;
+
+                // 7. นำแถว <tr> ที่สร้างเสร็จแล้วไปต่อท้ายใน <table>
+                table.appendChild(tr);
+            });
+        }
+
+        // 8. สั่งให้ฟังก์ชันทำงานทันทีที่เปิดหน้าเว็บ
+        loadHospitals();
+    </script>
+</head>
+<body>
+    <!-- ตารางเริ่มต้นมีเพียงแค่ส่วนหัวข้อ (Header) ส่วนเนื้อหาจะถูก AJAX แทรกเข้ามา -->
+    <table border="1" id="table">
+        <tr>
+            <th>No.</th>
+            <th>ชื่อโรงพยาบาล</th>
+            <th>ขนาดใหญ่</th>
+            <th>ขนาดกลาง</th>
+            <th>ขนาดเล็ก</th>
+        </tr>
+    </table>
+</body>
+</html>

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script>
+        let hosSize = [];
+        async function getDataFromAPI(){
+            let response = await fetch('http://202.44.40.193/~aws/JSON/priv_hos.json');
+            let rawdata = await response.text();
+            let objData = JSON.parse(rawdata);
+            let result = document.getElementById("result");
+            for(let i=0;i<objData.features.length;i++){
+                let content = "ชื่อโรงพยาบาล :"+objData.features[i].properties.name+"("+objData.features[i].properties.num_bed+" เตียง)";
+                let li = document.createElement("li");
+                li.innerHTML = content;
+                result.appendChild(li);
+            }
+            hosSize = objData.features;
+        }
+        
+        function checkSize(size){
+            let whatsize = [];
+            if(size=="big"){
+                whatsize = hosSize.filter(num => num.properties.num_bed>=91);
+            }
+            else if(size=="mid"){
+                whatsize = hosSize.filter(num=>num.properties.num_bed>=31 && num.properties.num_bed<91);
+            }
+            else if(size=="small"){
+                whatsize = hosSize.filter(num=>num.properties.num_bed<=30);
+            }
+            let result = document.getElementById("result");
+            result.innerHTML = "";
+            for(let i=0;i<whatsize.length;i++){
+                let content = "ชื่อโรงพยาบาล :"+whatsize[i].properties.name+"("+whatsize[i].properties.num_bed+" เตียง)";
+                let li = document.createElement("li");
+                li.innerHTML = content;
+                result.appendChild(li);
+            }
+            
+        }
+        getDataFromAPI();
+    </script>
+</head>
+<body>
+    <h1>โรงพยาบาลเอกชนใน กทม.</h1>
+    <input type="radio" name="sizehos" id="bigsize" onclick="checkSize('big')"> โรงพยาบาลเอกชนขนาดใหญ่ <br>
+    <input type="radio" name="sizehos" id="midsize" onclick="checkSize('mid')"> โรงพยาบาลเอกชนขนาดกลาง <br>
+    <input type="radio" name="sizehos" id="smallsize" onclick="checkSize('small')"> โรงพยาบาลเอกชนขนาดเล็ก <br>
+    <ul id="result"></ul>
+</body>
+</html>

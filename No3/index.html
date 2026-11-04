@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>ข้อ 3</title>
+    <script>
+        // =============================================================
+        // ข้อ 3 - Drop-Down List เฉพาะโรงพยาบาลขนาดใหญ่
+        // คอนเซปต์: ดึงไฟล์ JSON ด้วย fetch() -> ใช้ .filter() คัดเฉพาะเตียง >= 91
+        // -> วนลูปสร้างแท็ก <option> ใส่เข้าไปใน <select>
+        // =============================================================
+
+        async function loadHospitals() {
+            // 1. ดึงข้อมูลจากไฟล์ priv_hos.json
+            let res = await fetch('priv_hos.json');
+            let data = await res.json();
+
+            // 2. ชี้เป้าไปที่แท็ก <select id="hospital">
+            let select = document.getElementById("hospital");
+
+            // 3. กรอง (filter) เฉพาะโรงพยาบาลที่มีเตียงตั้งแต่ 91 เตียงขึ้นไป (ขนาดใหญ่)
+            let bigHospitals = data.features.filter(h => h.properties.num_bed >= 91);
+
+            // 4. วนลูปเฉพาะโรงพยาบาลขนาดใหญ่ที่กรองได้ เพื่อสร้าง <option>
+            bigHospitals.forEach(h => {
+                let opt = document.createElement("option"); // สร้างแท็ก <option>
+                opt.value = h.properties.name;              // กำหนดค่า value เป็นชื่อโรงพยาบาล
+                opt.textContent = h.properties.name;        // กำหนดข้อความที่แสดงเป็นชื่อโรงพยาบาล
+                select.appendChild(opt);                    // นำ <option> ยัดเข้าไปใน <select>
+            });
+        }
+
+        // 5. สั่งให้ฟังก์ชันทำงานเมื่อหน้าเว็บโหลด
+        loadHospitals();
+    </script>
+</head>
+<body>
+    <h3>โรงพยาบาลขนาดใหญ่</h3>
+
+    <!-- Drop-Down List สำหรับให้ผู้ใช้เลือก -->
+    <select id="hospital">
+        <option value="">-- เลือกโรงพยาบาล --</option>
+    </select>
+</body>
+</html>
