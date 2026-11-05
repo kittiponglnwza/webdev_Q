@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script>
+        let xmlHttp;
+        let objectData;   // [เพิ่ม] เก็บข้อมูล JSON ทั้งหมดไว้ global เพื่อให้ฟังก์ชัน showDetail เรียกใช้ได้
+
+        function getData(){
+            xmlHttp = new XMLHttpRequest();
+            xmlHttp.onreadystatechange = showData;
+            xmlHttp.open("GET","http://202.44.40.193/~aws/JSON/priv_hos.json");
+            xmlHttp.send();
+        }
+
+        function showData(){
+            if(xmlHttp.readyState==4&&xmlHttp.status==200){
+                objectData = JSON.parse(xmlHttp.responseText);   // [แก้] ไม่ใช้ let แล้ว เพราะประกาศเป็น global ด้านบน
+                let result = document.getElementById("result");
+                for(let i=0;i<objectData.features.length;i++){
+                    let name = objectData.features[i].properties.name;
+                    let bed = objectData.features[i].properties.num_bed;
+                    if(bed>=91){
+                        let opt = document.createElement("option");
+                        opt.value = i;            // [แก้] เก็บ "ลำดับ i" ไว้เป็น value เพื่อเอาไปดึงข้อมูล รพ. นั้นภายหลัง
+                        opt.innerHTML = name;     // ข้อความที่แสดงยังเป็นชื่อ รพ. เหมือนเดิม
+                        result.appendChild(opt);
+                    }
+                }
+            }
+        }
+
+        // [เพิ่ม] ทำงานเมื่อผู้ใช้เลือก รพ. ใน dropdown
+        function showDetail(){
+            let idx = document.getElementById("result").value;   // ได้ค่า i ที่เก็บไว้ใน opt.value
+            let detail = document.getElementById("detail");
+
+            if(idx === ""){            // ถ้าเลือก "select hospital" (ค่าว่าง) ให้ล้างข้อมูล
+                detail.innerHTML = "";
+                return;
+            }
+
+            let p = objectData.features[idx].properties;   // ดึง properties ของ รพ. ที่เลือก
+            detail.innerHTML =
+                "<b>ชื่อ:</b> " + p.name + "<br>" +
+                "<b>ที่อยู่:</b> " + p.address + "<br>" +
+                "<b>โทร:</b> " + p.tel + "<br>" +
+                "<b>จำนวนเตียง:</b> " + p.num_bed + "<br>" +
+                "<b>รหัสเขต:</b> " + p.dcode;
+        }
+
+        getData();
+    </script>
+</head>
+<body>
+    <!-- [เพิ่ม] onchange="showDetail()" ให้เรียกฟังก์ชันทุกครั้งที่เลือกค่าใหม่ -->
+    <select name="" id="result" onchange="showDetail()">
+        <option value="">select hospital</option>
+    </select>
+
+    <!-- [เพิ่ม] ที่ว่างไว้แสดงรายละเอียด รพ. ที่เลือก -->
+    <div id="detail"></div>
+</body>
+</html>

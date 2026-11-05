@@ -43,3 +43,57 @@
     </select>
 </body>
 </html>
+
+
+
+<!-- <!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <title>ข้อ 3</title>
+    <script>
+        // =============================================================
+        // ข้อ 3 - Drop-Down List เฉพาะโรงพยาบาลขนาดใหญ่ (สไตล์ Lab: XMLHttpRequest)
+        // =============================================================
+
+        // ที่อยู่ไฟล์ JSON สลับได้ 2 แบบ:
+        //  - ไฟล์ในโฟลเดอร์เดียวกัน (ต้องรันผ่าน server เช่น php -S / Live Server)
+        //  - URL ของเซิร์ฟเวอร์อาจารย์ (ติด CORS ถ้าเปิดจากเครื่องตัวเอง)
+        // const URL_JSON = "priv_hos.json";
+        const URL_JSON = "http://202.44.40.193/~aws/JSON/priv_hos.json";
+
+        function loadHospitals() {
+            let xmlHttp = new XMLHttpRequest();
+            xmlHttp.open("GET", URL_JSON);
+
+            // ทำงานเมื่อสถานะเปลี่ยน: readyState 4 = ตอบกลับครบ, status 200 = สำเร็จ
+            xmlHttp.onreadystatechange = function () {
+                if (xmlHttp.readyState === 4 && xmlHttp.status === 200) {
+                    // แปลงข้อความ JSON เป็น object
+                    let data = JSON.parse(xmlHttp.responseText);
+                    let select = document.getElementById("hospital");
+
+                    data.features.forEach(function (h) {
+                        // ขนาดใหญ่ = ตั้งแต่ 91 เตียงขึ้นไป
+                        if (h.properties.num_bed >= 91) {
+                            let opt = document.createElement("option");
+                            opt.value = h.properties.name;
+                            opt.textContent = h.properties.name; // แสดงเฉพาะชื่อตามโจทย์
+                            select.appendChild(opt);
+                        }
+                    });
+                }
+            };
+            xmlHttp.send();
+        }
+
+        window.onload = loadHospitals;
+    </script>
+</head>
+<body>
+    <h3>โรงพยาบาลขนาดใหญ่</h3>
+    <select id="hospital">
+        <option value="">-- เลือกโรงพยาบาล --</option>
+    </select>
+</body>
+</html> -->

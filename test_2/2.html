@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <title>ข้อ 2 B (ใช้ AJAX) - เวอร์ชันเหลี่ยมจัดเต็ม</title>
+    <style>
+        table { border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #000; padding: 4px 8px; }
+        .center { text-align: center; }
+        .summary { font-weight: bold; background: #eee; }
+    </style>
+    <script>
+        // =============================================================
+        // ค่าคงที่เกณฑ์ขนาด รพ. (ถ้าอาจารย์เปลี่ยนเกณฑ์ แก้ที่นี่ที่เดียว)
+        // ใหญ่ >= 91 | กลาง 31-90 | เล็ก <= 30
+        // ถ้าเปลี่ยนเป็น "ใหญ่ > 100" ให้ตั้ง BIG_MIN = 101
+        // =============================================================
+        const BIG_MIN = 91;
+        const MID_MIN = 31;
+
+        // เก็บข้อมูลทั้งหมดไว้ตัวแปร global (โหลดครั้งเดียว แล้ว filter/sort จากตัวนี้)
+        let allData = [];
+
+        // -------------------------------------------------------------
+        // ฟังก์ชันตัดสินขนาด รพ. จากจำนวนเตียง
+        // คืนค่า "big" | "mid" | "small" | "" (ถ้าข้อมูลเตียงไม่ถูกต้อง)
+        // -------------------------------------------------------------
+        function getSize(bedRaw) {
+            // กัน null / undefined / ค่าว่าง (เพราะ Number(null) = 0 จะกลายเป็น รพ.เล็กผิดๆ)
+            if (bedRaw === null || bedRaw === undefined || bedRaw === "") return "";
+            let bed = Number(bedRaw);      // แปลง string เป็นตัวเลข
+            if (isNaN(bed)) return "";     // ถ้าแปลงไม่ได้ ถือว่าไม่มีข้อมูล
+            if (bed >= BIG_MIN) return "big";
+            if (bed >= MID_MIN) return "mid";
+            return "small";
+        }
+
+        // -------------------------------------------------------------
+        // โหลดข้อมูลด้วย AJAX (fetch) ครั้งเดียวตอนเปิดหน้า
+        // -------------------------------------------------------------
+        async function loadHospitals() {
+            try {
+                let res = await fetch('priv_hos.json');
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                let data = await res.json();
+
+                // เก็บเฉพาะ properties ของแต่ละ รพ. ไว้ใน allData
+                allData = data.features.map(f => f.properties);
+
+                // (ทางเลือก) สร้างตัวเลือกจังหวัดใน dropdown จากข้อมูลจริง
+                buildProvinceOptions();
+
+                // วาดตารางครั้งแรก
+                render();
+            } catch (e) {
+                console.error("โหลดข้อมูลไม่สำเร็จ:", e);
+            }
+        }
+
+        // -------------------------------------------------------------
+        // สร้างตัวเลือกจังหวัดใน <select id="province"> (ไม่ซ้ำกัน)
+        // *** ชื่อ field "province" ต้องเช็กกับไฟล์ JSON จริงอีกที ***
+        // -------------------------------------------------------------
+        function buildProvinceOptions() {
+            let sel = document.getElementById("province");
+            // Set = เก็บค่าไม่ซ้ำ, filter(Boolean) = ตัดค่าว่างทิ้ง
+            let provinces = [...new Set(allData.map(p => p.province).filter(Boolean))];
+            provinces.sort((a, b) => a.localeCompare(b, 'th')); // เรียงตามตัวอักษรไทย
+            provinces.forEach(pv => {
+                let op = document.createElement("option");
+                op.value = pv;
+                op.textContent = pv;
+                sel.appendChild(op);
+            });
+        }
+
+        // -------------------------------------------------------------
+        // render(): หัวใจหลัก ทำ 4 อย่างตามลำดับ
+        //   1) กรอง (ค้นหาชื่อ / ขนาด / จังหวัด)
+        //   2) เรียง
+        //   3) วาดแถวใหม่ (เลขลำดับรันใหม่ตามผลลัพธ์)
+        //   4) เพิ่มแถวสรุปท้ายตาราง
+        // เรียกซ้ำทุกครั้งที่ผู้ใช้เปลี่ยน input/select
+        // -------------------------------------------------------------
+        function render() {
+            // อ่านค่าจากช่องควบคุมต่างๆ
+            let keyword  = document.getElementById("search").value.trim().toLowerCase();
+            let sizeSel  = document.getElementById("size").value;      // all/big/mid/small
+            let provSel  = document.getElementById("province").value;  // all หรือชื่อจังหวัด
+            let sortMode = document.getElementById("sort").value;      // none/bedDesc/bedAsc/name
+
+            // ---- 1) กรองข้อมูล ----
+            let list = allData.filter(p => {
+                // ค้นหาชื่อ (ไม่สนตัวพิมพ์เล็กใหญ่) ถ้าช่องว่างจะผ่านทุกแถว
+                let okName = (p.name || "").toLowerCase().includes(keyword);
+                // กรองขนาด
+                let okSize = (sizeSel === "all") || (getSize(p.num_bed) === sizeSel);
+                // กรองจังหวัด
+                let okProv = (provSel === "all") || (p.province === provSel);
+                return okName && okSize && okProv; // ต้องผ่านครบทุกเงื่อนไข
+            });
+
+            // ---- 2) เรียงข้อมูล (sort แก้ array ที่ filter ออกมาใหม่ ไม่กระทบ allData) ----
+            if (sortMode === "bedDesc") {
+                list.sort((a, b) => Number(b.num_bed) - Number(a.num_bed));   // มาก -> น้อย
+            } else if (sortMode === "bedAsc") {
+                list.sort((a, b) => Number(a.num_bed) - Number(b.num_bed));   // น้อย -> มาก
+            } else if (sortMode === "name") {
+                list.sort((a, b) => (a.name || "").localeCompare(b.name || "", 'th')); // ก-ฮ
+            }
+
+            // ---- 3) วาดแถว ----
+            let tbody = document.getElementById("tbody");
+            tbody.innerHTML = ""; // ล้างแถวเก่าทิ้งก่อนวาดใหม่
+
+            // ตัวนับสำหรับแถวสรุป
+            let cntBig = 0, cntMid = 0, cntSmall = 0;
+
+            list.forEach((p, i) => {
+                let size = getSize(p.num_bed);
+                if (size === "big") cntBig++;
+                if (size === "mid") cntMid++;
+                if (size === "small") cntSmall++;
+
+                // cells = ข้อมูลแต่ละช่องในแถว (i+1 คือเลขลำดับที่รันใหม่ตามผลที่แสดง)
+                // *** ชื่อ field province / phone ต้องเช็กกับ JSON จริง ***
+                let cells = [
+                    (i + 1) + ".",
+                    p.name,
+                    p.province || "-",
+                    p.phone || "-",
+                    p.num_bed ?? "-",          // ?? = ถ้า null/undefined ให้แสดง "-"
+                    size === "big"   ? "✔" : "",
+                    size === "mid"   ? "✔" : "",
+                    size === "small" ? "✔" : ""
+                ];
+
+                let tr = document.createElement("tr");
+                cells.forEach((text, c) => {
+                    let td = document.createElement("td");
+                    td.textContent = text;                  // textContent กัน XSS / อักขระพิเศษ
+                    if (c >= 4) td.className = "center";    // คอลัมน์เตียง + ติ๊กขนาด จัดกึ่งกลาง
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+
+            // ---- 4) แถวสรุปท้ายตาราง ----
+            let sum = document.createElement("tr");
+            sum.className = "summary";
+            // colSpan=5 รวม 5 คอลัมน์แรก (No, ชื่อ, จังหวัด, เบอร์, เตียง) ไว้เป็นช่องเดียว
+            sum.innerHTML = `<td colspan="5" class="center">รวมทั้งหมด ${list.length} แห่ง</td>
+                             <td class="center">${cntBig}</td>
+                             <td class="center">${cntMid}</td>
+                             <td class="center">${cntSmall}</td>`;
+            tbody.appendChild(sum);
+        }
+    </script>
+</head>
+<body>
+    <!-- ===== แถบควบคุม: ค้นหา / กรอง / เรียง ===== -->
+    <!-- oninput / onchange เรียก render() ใหม่ทุกครั้งที่ผู้ใช้เปลี่ยนค่า -->
+    ค้นหาชื่อ: <input type="text" id="search" oninput="render()" placeholder="พิมพ์ชื่อ รพ.">
+
+    ขนาด:
+    <select id="size" onchange="render()">
+        <option value="all">ทั้งหมด</option>
+        <option value="big">ขนาดใหญ่</option>
+        <option value="mid">ขนาดกลาง</option>
+        <option value="small">ขนาดเล็ก</option>
+    </select>
+
+    จังหวัด:
+    <select id="province" onchange="render()">
+        <option value="all">ทั้งหมด</option>
+        <!-- ตัวเลือกจังหวัดจะถูกเติมด้วย JS ตอนโหลดข้อมูลเสร็จ -->
+    </select>
+
+    เรียงตาม:
+    <select id="sort" onchange="render()">
+        <option value="none">ตามไฟล์เดิม</option>
+        <option value="bedDesc">เตียง มาก → น้อย</option>
+        <option value="bedAsc">เตียง น้อย → มาก</option>
+        <option value="name">ชื่อ ก → ฮ</option>
+    </select>
+
+    <!-- ===== ตาราง: thead ส่วนหัว / tbody ส่วนข้อมูล (JS เติมให้) ===== -->
+    <table>
+        <thead>
+            <tr>
+                <th>No.</th>
+                <th>ชื่อโรงพยาบาล</th>
+                <th>จังหวัด</th>
+                <th>เบอร์โทร</th>
+                <th>จำนวนเตียง</th>
+                <th>ขนาดใหญ่</th>
+                <th>ขนาดกลาง</th>
+                <th>ขนาดเล็ก</th>
+            </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+    </table>
+
+    <script>
+        // เรียกท้าย body เพื่อให้แน่ใจว่า DOM ถูกสร้างครบแล้วก่อนทำงาน
+        loadHospitals();
+    </script>
+</body>
+</html>

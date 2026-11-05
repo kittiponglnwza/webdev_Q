@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Blueshop (HTML + AJAX ครอบคลุมทุกกรณี)</title>
+
+    <script>
+    // #####################################################################
+    // #  ส่วนที่ 1: ตัวแปรส่วนกลาง (Global Variables)                      #
+    // #####################################################################
+
+    let allProducts  = [];     // เก็บรายการสินค้าทั้งหมดจากฐานข้อมูล
+    let cartItems    = [];     // เก็บรายการสินค้าที่ผู้ใช้เลือกซื้อ [{product, qty}]
+    let totalPrice   = 0;      // ยอดเงินรวม (บาท)
+    let totalCount   = 0;      // จำนวนชิ้นรวม
+    let buyPrice     = 0;      // ราคาสินค้าชิ้นที่ซื้อ (ใช้กรณีสมาชิกซื้อ 1 ชิ้น)
+    let isMember     = 1;      // ประเภทลูกค้า (1=สมาชิก, 0=ไม่ใช่สมาชิก)
+    let freePid      = "";     // รหัสสินค้าของแถมที่เลือก
+    let memberName   = "";     // ชื่อสมาชิกที่ตรวจพบ (จากฐานข้อมูล)
+    let memberUser   = "";     // username ที่กรอก (สำหรับบันทึก order)
+    let discountRate = 0;      // อัตราส่วนลดสมาชิก (เช่น 0.10 = 10%)
+    let freeQuota    = 0;      // จำนวนชิ้นที่แถมได้
+
+
+    // #####################################################################
+    // #  ส่วนที่ 2: ฟังก์ชันดึงข้อมูล (Data Fetching Functions)              #
+    // #####################################################################
+
+    // =====================================================================
+    // ฟังก์ชันที่ 1: loadProducts()
+    // หน้าที่: ดึงรายการสินค้าจาก PHP API (get_products.php) ผ่าน AJAX
+    // ทำงานเมื่อ: เปิดหน้าเว็บครั้งแรก (onload)
+    // วิธีทำงาน: ส่ง fetch() ไปที่ get_products.php -> รับ JSON กลับมา
+    //            -> เก็บไว้ในตัวแปร allProducts -> เรียกวาดตาราง
+    // =====================================================================
+    async function loadProducts() {
+        try {
+            let response = await fetch('get_products.php');          // ส่ง Request
+            allProducts = await response.json();                     // แปลง JSON -> Array
+            renderProductTable(allProducts);                         // วาดตารางสินค้า
+        } catch (err) {
+            alert("โหลดข้อมูลสินค้าไม่สำเร็จ: " + err.message);
+        }
+    }
+
+    // =====================================================================
+    // ฟังก์ชันที่ 2: checkMemberFromDB(username)
+    // หน้าที่: ตรวจสอบ username กับตาราง member ในฐานข้อมูลจริง
+    // ทำงานเมื่อ: ผู้ใช้พิมพ์ username ในช่อง input แล้วกดปุ่ม "ตรวจสอบ"
+    // วิธีทำงาน: ส่ง fetch ไปที่ get_products.php?action=check_member&username=xxx
+    //            -> ถ้าพบ ให้ตั้ง isMember = 1 และแสดงชื่อสมาชิก
+    //            -> ถ้าไม่พบ ให้ตั้ง isMember = 0
+    // =====================================================================
+    async function checkMemberFromDB() {
+        let usernameInput = document.getElementById("username-input");
+        let resultSpan    = document.getElementById("member-check-result");
+        let username      = usernameInput.value.trim();
+
+        if (username === "") {
+            resultSpan.innerText = "กรุณากรอก username";
+            return;
+        }
+
+        try {
+            let res  = await fetch('get_products.php?action=check_member&username=' + username);
+            let data = await res.json();
+
+            if (data.found === true) {
+                // พบสมาชิกในฐานข้อมูล
+                isMember   = 1;
+                memberName = data.name;
+                memberUser = username;
+                resultSpan.innerText = "✔ พบสมาชิก: " + data.name;
+            } else {
+                // ไม่พบ -> เป็นลูกค้าทั่วไป
+                isMember   = 0;
+                memberName = "";
+                memberUser = "guest";
+                resultSpan.innerText = "✘ ไม่พบ username นี้ในระบบ (ลูกค้าทั่วไป)";
+            }
+        } catch (err) {
+            resultSpan.innerText = "เกิดข้อผิดพลาดในการตรวจสอบ";
+        }
+    }
+
+
+    // #####################################################################
+    // #  ส่วนที่ 3: ฟังก์ชันแสดงผล (Rendering Functions)                    #
+    // #####################################################################
+
+    // =====================================================================
+    // ฟังก์ชันที่ 3: renderProductTable(productList)
+    // หน้าที่: สร้างแถวตาราง <tr> สำหรับสินค้าแต่ละตัว
+    // พารามิเตอร์: productList = อาร์เรย์ของสินค้าที่จะแสดง
+    //             (อาจเป็น allProducts ทั้งหมด หรือผลลัพธ์จากการค้นหา)
+    // =====================================================================
+    function renderProductTable(productList) {
+        let tbody = document.getElementById("product-tbody");
+        tbody.innerHTML = "";
+
+        if (productList.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" align="center">ไม่พบสินค้า</td></tr>';
+            return;
+        }
+
+        productList.forEach(function(p) {
+            let tr = document.createElement("tr");
+            tr.setAttribute("id", "row_" + p.pid); // ตั้ง id แถว เพื่อใช้ตอนลบ
+
+            tr.innerHTML =
+                '<td>' + p.pname + '</td>' +
+                '<td align="center">' + p.price + '</td>' +
+                '<td>' + p.pdetail + '</td>' +
+                '<td align="center">' +
+                    '<input type="number" id="qty_' + p.pid + '" value="0" min="0" size="4">' +
+                '</td>' +
+                '<td align="center">' +
+                    '<button type="button" onclick="confirmDeleteItem(\'' + p.pid + '\', \'' + p.pname + '\')">ลบ</button>' +
+                '</td>';
+
+            tbody.appendChild(tr);
+        });
+    }
+
+    // =====================================================================
+    // ฟังก์ชันที่ 4: renderGiftDropdown(eligibleList, selectId)
+    // หน้าที่: สร้าง <select> Drop-down ของแถมจากรายการที่มีสิทธิ์
+    // พารามิเตอร์: eligibleList = อาร์เรย์สินค้าที่เลือกเป็นของแถมได้
+    //             selectId = id ของ <select> ที่จะสร้าง (เพื่อดึงค่าภายหลัง)
+    // =====================================================================
+    function renderGiftDropdown(eligibleList, selectId) {
+        let html = "<select id='" + selectId + "'>";
+        html += "<option value=''>-- ไม่ใช้สิทธิ์ --</option>";
+
+        eligibleList.forEach(function(p) {
+            html += "<option value='" + p.pid + "'>" + p.pname + " (" + p.price + " บาท)</option>";
+        });
+
+        html += "</select>";
+        return html;
+    }
+
+    // =====================================================================
+    // ฟังก์ชันที่ 5: showStep(n)
+    // หน้าที่: เปลี่ยนหน้า (สลับ Step) โดยซ่อน/แสดง <div>
+    // พารามิเตอร์: n = หมายเลข Step ที่ต้องการแสดง (0, 1, หรือ 2)
+    // =====================================================================
+    function showStep(n) {
+        document.getElementById("step0").style.display = (n === 0) ? "block" : "none";
+        document.getElementById("step1").style.display = (n === 1) ? "block" : "none";
+        document.getElementById("step2").style.display = (n === 2) ? "block" : "none";
+    }
+
+
+    // #####################################################################
+    // #  ส่วนที่ 4: ฟังก์ชันคำนวณ (Calculation / Business Logic)           #
+    // #####################################################################
+
+    // =====================================================================
+    // ฟังก์ชันที่ 6: calculateOrder()
+    // หน้าที่: อ่านจำนวนสินค้าจากช่อง input ทั้งหมด -> คำนวณยอดรวม
+    // ผลลัพธ์: เก็บค่าลงตัวแปรส่วนกลาง cartItems, totalPrice, totalCount, buyPrice
+    // =====================================================================
+    function calculateOrder() {
+        cartItems  = [];
+        totalPrice = 0;
+        totalCount = 0;
+        buyPrice   = 0;
+
+        allProducts.forEach(function(p) {
+            let input = document.getElementById("qty_" + p.pid);
+            let q = parseInt(input ? input.value : 0) || 0;
+
+            if (q > 0) {
+                cartItems.push({ product: p, qty: q });
+                totalPrice += p.price * q;   // สะสมยอดเงินรวม
+                totalCount += q;             // สะสมจำนวนชิ้นรวม
+                buyPrice = p.price;          // เก็บราคาสินค้าชิ้นที่ซื้อ (ใช้กรณีสมาชิกซื้อ 1 ชิ้น)
+            }
+        });
+    }
+
+    // =====================================================================
+    // ฟังก์ชันที่ 7: checkPromotionEligibility()
+    // หน้าที่: ตรวจสอบเงื่อนไขโปรโมชัน (ตามโจทย์)
+    //
+    // >> เงื่อนไขที่ 1 (สมาชิก):
+    //    ลูกค้าเป็นสมาชิก ซื้อสินค้า 1 ชิ้นใดๆ
+    //    -> มีสิทธิ์เลือกเพิ่มได้อีก 1 ชิ้นที่ราคาเท่ากันหรือน้อยกว่า
+    //    -> ลูกค้าอาจใช้สิทธิ์หรือไม่ก็ได้
+    //
+    // >> เงื่อนไขที่ 2 (ไม่ใช่สมาชิก):
+    //    ลูกค้าไม่เป็นสมาชิก ซื้อสินค้าไม่จำกัดจำนวนชิ้น
+    //    แต่ยอดซื้อรวมต้อง >= 500 บาทขึ้นไป
+    //    -> มีสิทธิ์เลือกเพิ่มได้ 1 ชิ้นที่ราคาเท่ากับหรือน้อยกว่า 500 บาท
+    //    -> ลูกค้าอาจใช้สิทธิ์หรือไม่ก็ได้
+    //
+    // คืนค่า: อาร์เรย์ของสินค้าที่สามารถเลือกเป็นของแถมได้
+    // =====================================================================
+    function checkPromotionEligibility() {
+        let eligible = [];
+
+        if (isMember === 1 && totalCount === 1) {
+            // เงื่อนไข 1: สมาชิก + ซื้อ 1 ชิ้น -> แถมสินค้าราคา <= ชิ้นที่ซื้อ
+            allProducts.forEach(function(p) {
+                if (p.price <= buyPrice) {
+                    eligible.push(p);
+                }
+            });
+        } else if (isMember === 0 && totalPrice >= 500) {
+            // เงื่อนไข 2: ไม่ใช่สมาชิก + ยอดรวม >= 500 -> แถมสินค้าราคา <= 500
+            allProducts.forEach(function(p) {
+                if (p.price <= 500) {
+                    eligible.push(p);
+                }
+            });
+        }
+
+        return eligible;
+    }
+
+    // =====================================================================
+    // ฟังก์ชันที่ 8: calculateDiscount(total, isMember)
+    // หน้าที่: คำนวณส่วนลดสำหรับสมาชิก (เตรียมไว้กรณีโจทย์เพิ่ม)
+    // ตัวอย่าง: สมาชิกได้ส่วนลด 10% -> discount = total * 0.10
+    // คืนค่า: { discount: จำนวนเงินที่ลด, net: ยอดชำระหลังหักส่วนลด }
+    // =====================================================================
+    function calculateDiscount(total, memberFlag) {
+        let discount = 0;
+        if (memberFlag === 1) {
+            discountRate = 0.10; // สมาชิกลด 10%
+            discount = total * discountRate;
+        }
+        return {
+            discount: discount,
+            net: total - discount
+        };
+    }
+
+    // =====================================================================
+    // ฟังก์ชันที่ 9: calculateFreeQuota(total, thresholdAmount)
+    // หน้าที่: คำนวณจำนวนชิ้นที่ได้แถม (เตรียมไว้กรณีโจทย์เปลี่ยน)
+    // ตัวอย่าง: ซื้อครบทุกๆ 500 บาท ได้แถม 1 ชิ้น
+    //          ซื้อ 1000 ได้ 2 ชิ้น, ซื้อ 1500 ได้ 3 ชิ้น
+    // คืนค่า: จำนวนชิ้นที่ได้แถม
+    // =====================================================================
+    function calculateFreeQuota(total, thresholdAmount) {
+        return Math.floor(total / thresholdAmount);
+    }
+
+
+    // #####################################################################
+    // #  ส่วนที่ 5: ฟังก์ชันจัดการรายการ (Item Management Functions)        #
+    // #####################################################################
+
+    // =====================================================================
+    // ฟังก์ชันที่ 10: confirmDeleteItem(pid, pname)
+    // หน้าที่: ยืนยันการลบสินค้าออกจากรายการ (Confirm Delete)
+    // วิธีทำงาน:
+    //   1. เช็คว่าสินค้ามีจำนวน > 0 หรือไม่ (ถ้า 0 อยู่แล้ว ไม่ต้องลบ)
+    //   2. แสดง confirm() Popup ให้ผู้ใช้กด OK/Cancel
+    //   3. ถ้ากด OK -> รีเซ็ตจำนวนเป็น 0
+    //   4. แสดง alert() แจ้งผลลัพธ์
+    // =====================================================================
+    function confirmDeleteItem(pid, pname) {
+        let qtyInput = document.getElementById("qty_" + pid);
+        let currentQty = parseInt(qtyInput.value) || 0;
+
+        // กรณีที่ 1: ยังไม่ได้เลือกสินค้านี้ (จำนวนเป็น 0 อยู่แล้ว)
+        if (currentQty === 0) {
+            alert("สินค้า [" + pname + "] ยังไม่ได้ถูกเลือก (จำนวนเป็น 0 อยู่แล้ว)");
+            return;
+        }
+
+        // กรณีที่ 2: มีสินค้าอยู่ -> ถามยืนยันก่อนลบ
+        let answer = confirm("คุณต้องการลบสินค้า [" + pname + "] จำนวน " + currentQty + " ชิ้น ออกจากรายการใช่หรือไม่?");
+
+        if (answer === true) {
+            // ผู้ใช้กด OK -> ล้างจำนวนเป็น 0
+            qtyInput.value = 0;
+            alert("ลบสินค้า [" + pname + "] ออกจากรายการเรียบร้อยแล้ว");
+        }
+        // ถ้าผู้ใช้กด Cancel -> ไม่ทำอะไร (จำนวนยังคงเดิม)
+    }
+
+    // =====================================================================
+    // ฟังก์ชันที่ 11: searchProduct()
+    // หน้าที่: ค้นหาสินค้าแบบ Real-time (Live Search)
+    // วิธีทำงาน: อ่านคำค้นจากช่อง input -> กรอง allProducts ด้วย .filter()
+    //           -> วาดตารางใหม่เฉพาะสินค้าที่ตรงกับคำค้น
+    // =====================================================================
+    function searchProduct() {
+        let keyword = document.getElementById("search-box").value.toLowerCase();
+
+        // กรองสินค้าที่ชื่อ (pname) หรือรายละเอียด (pdetail) มีคำค้นอยู่
+        let filtered = allProducts.filter(function(p) {
+            return p.pname.toLowerCase().includes(keyword) ||
+                   p.pdetail.toLowerCase().includes(keyword);
+        });
+
+        renderProductTable(filtered);
+    }
+
+    // =====================================================================
+    // ฟังก์ชันที่ 12: clearAllItems()
+    // หน้าที่: ล้างจำนวนสินค้าทั้งหมดให้เป็น 0 ก่อนลบ ถามยืนยันก่อน
+    // =====================================================================
+    function clearAllItems() {
+        let answer = confirm("คุณต้องการล้างรายการสินค้าทั้งหมดใช่หรือไม่?");
+        if (answer === true) {
+            allProducts.forEach(function(p) {
+                let input = document.getElementById("qty_" + p.pid);
+                if (input) input.value = 0;
+            });
+            alert("ล้างรายการสินค้าทั้งหมดเรียบร้อยแล้ว");
+        }
+    }
+
+
+    // #####################################################################
+    // #  ส่วนที่ 6: ฟังก์ชันควบคุมขั้นตอน (Step Controller Functions)       #
+    // #####################################################################
+
+    // =====================================================================
+    // ฟังก์ชันที่ 13: goToStep1()
+    // หน้าที่: ทำงานเมื่อกดปุ่ม "ตกลง" ที่ Step 0
+    // ขั้นตอนการทำงาน:
+    //   1. อ่านประเภทลูกค้า (Radio: สมาชิก/ไม่ใช่สมาชิก)
+    //   2. เรียก calculateOrder() คำนวณยอดเงินและจำนวนชิ้น
+    //   3. ตรวจสอบว่าซื้อสินค้าอย่างน้อย 1 ชิ้น
+    //   4. แสดงยอดเงินรวม
+    //   5. เรียก checkPromotionEligibility() ตรวจสอบสิทธิ์ของแถม
+    //   6. แสดง Drop-down ของแถม (ถ้ามีสิทธิ์)
+    //   7. เปลี่ยนไป Step 1
+    // =====================================================================
+    function goToStep1() {
+        // 1. อ่านประเภทลูกค้า (ถ้าใช้ Radio Button)
+        let radios = document.getElementsByName("member");
+        for (let i = 0; i < radios.length; i++) {
+            if (radios[i].checked) {
+                isMember = parseInt(radios[i].value);
+                break;
+            }
+        }
+
+        // 2. คำนวณรายการสั่งซื้อ
+        calculateOrder();
+
+        // 3. ตรวจสอบว่าเลือกสินค้าหรือยัง
+        if (totalCount === 0) {
+            alert("กรุณาเลือกซื้อสินค้าอย่างน้อย 1 ชิ้น");
+            return;
+        }
+
+        // 4. แสดงยอดเงินรวม
+        document.getElementById("show-total").innerText = totalPrice;
+
+        // แสดงสถานะลูกค้า
+        document.getElementById("show-member-type").innerText =
+            (isMember === 1) ? "สมาชิก" : "ไม่ใช่สมาชิก";
+
+        // แสดงรายการสินค้าที่ซื้อ
+        let boughtHtml = "<ul>";
+        cartItems.forEach(function(item) {
+            boughtHtml += "<li>" + item.product.pname + " x " + item.qty +
+                          " = " + (item.product.price * item.qty) + " บาท</li>";
+        });
+        boughtHtml += "</ul>";
+        document.getElementById("show-bought-items").innerHTML = boughtHtml;
+
+        // 5. ตรวจสอบสิทธิ์โปรโมชัน
+        let eligible = checkPromotionEligibility();
+
+        // 6. แสดงตัวเลือกของแถม
+        let giftArea = document.getElementById("gift-area");
+        if (eligible.length > 0) {
+            let dropdownHtml = renderGiftDropdown(eligible, "free_select");
+            giftArea.innerHTML = "<p>มีสิทธิ์เลือกสินค้าเพิ่ม 1 ชิ้น: " + dropdownHtml + "</p>";
+        } else {
+            giftArea.innerHTML = "<p>ไม่มีสิทธิ์เลือกสินค้าเพิ่ม</p>";
+        }
+
+        // 7. ไป Step 1
+        showStep(1);
+    }
+
+    // =====================================================================
+    // ฟังก์ชันที่ 14: goToStep2()
+    // หน้าที่: ทำงานเมื่อกดปุ่ม "ยืนยัน" ที่ Step 1 -> สรุปรายการ
+    // ขั้นตอนการทำงาน:
+    //   1. อ่านค่าสินค้าแถมที่เลือก (ถ้ามี)
+    //   2. สร้างรายการสรุป (สินค้าที่ซื้อ + ของแถม)
+    //   3. แสดงยอดชำระทั้งสิ้น
+    //   4. เปลี่ยนไป Step 2
+    // =====================================================================
+    function goToStep2() {
+        // 1. อ่านค่าของแถมที่เลือก
+        let freeSelect = document.getElementById("free_select");
+        freePid = freeSelect ? freeSelect.value : "";
+
+        // 2. สร้างรายการสรุป
+        let summaryHtml = "";
+
+        // 2.1 รายการสินค้าที่ซื้อ
+        cartItems.forEach(function(item) {
+            summaryHtml += "<li>" + item.product.pname +
+                           " x " + item.qty +
+                           " = " + (item.product.price * item.qty) + " บาท</li>";
+        });
+
+        // 2.2 ของแถม (ถ้าเลือก)
+        let freeProduct = null;
+        let freeInfoHtml = "";
+        if (freePid !== "") {
+            freeProduct = allProducts.find(function(p) { return p.pid == freePid; });
+            if (freeProduct) {
+                summaryHtml += "<li>" + freeProduct.pname + " x 1 (สินค้าที่เลือกเพิ่มตามสิทธิ์ ฟรี)</li>";
+            }
+        } else {
+            freeInfoHtml = "<p>ไม่ได้ใช้สิทธิ์เลือกสินค้าเพิ่ม</p>";
+        }
+
+        document.getElementById("summary-list").innerHTML = summaryHtml;
+        document.getElementById("free-info").innerHTML = freeInfoHtml;
+
+        // 3. แสดงยอดชำระ
+        document.getElementById("final-total").innerText = totalPrice;
+
+        // แสดงสถานะลูกค้าในหน้าสรุป
+        document.getElementById("summary-member").innerText =
+            (isMember === 1) ? "สมาชิก" : "ไม่ใช่สมาชิก";
+
+        // 4. ไป Step 2
+        showStep(2);
+    }
+
+
+    // #####################################################################
+    // #  ส่วนที่ 7: ฟังก์ชันบันทึกข้อมูล (Save / Database Functions)        #
+    // #####################################################################
+
+    // =====================================================================
+    // ฟังก์ชันที่ 15: saveOrderToDB()
+    // หน้าที่: บันทึกคำสั่งซื้อลงฐานข้อมูลจริง (ตาราง orders + item)
+    // วิธีทำงาน: ส่ง POST Request ไปที่ get_products.php?action=save_order
+    //           พร้อมข้อมูลสินค้าในรูปแบบ JSON
+    // =====================================================================
+    async function saveOrderToDB() {
+        let answer = confirm("คุณต้องการยืนยันคำสั่งซื้อและบันทึกลงฐานข้อมูลใช่หรือไม่?");
+        if (answer !== true) return;
+
+        // เตรียมข้อมูลสำหรับส่งไป PHP
+        let orderData = {
+            action:   "save_order",
+            username: memberUser || "guest",
+            items:    cartItems.map(function(item) {
+                return { pid: item.product.pid, qty: item.qty };
+            }),
+            free_pid: freePid
+        };
+
+        try {
+            let res = await fetch('get_products.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderData)
+            });
+            let result = await res.json();
+
+            if (result.success) {
+                alert("บันทึกคำสั่งซื้อสำเร็จ! หมายเลข Order: " + result.ord_id);
+            } else {
+                alert("บันทึกไม่สำเร็จ: " + result.error);
+            }
+        } catch (err) {
+            alert("เกิดข้อผิดพลาด: " + err.message);
+        }
+    }
+
+
+    // #####################################################################
+    // #  ส่วนที่ 8: ฟังก์ชันรีเซ็ต (Reset Functions)                       #
+    // #####################################################################
+
+    // =====================================================================
+    // ฟังก์ชันที่ 16: resetToStart()
+    // หน้าที่: ล้างค่าทั้งหมดแล้วกลับไปหน้าเลือกสินค้า (Step 0)
+    // =====================================================================
+    function resetToStart() {
+        // ล้างช่องจำนวนสินค้าทั้งหมดเป็น 0
+        allProducts.forEach(function(p) {
+            let input = document.getElementById("qty_" + p.pid);
+            if (input) input.value = 0;
+        });
+
+        // ล้างช่องค้นหา
+        let searchBox = document.getElementById("search-box");
+        if (searchBox) searchBox.value = "";
+
+        // รีเซ็ต Radio เป็นสมาชิก
+        let memberRadio = document.querySelector('input[name="member"][value="1"]');
+        if (memberRadio) memberRadio.checked = true;
+
+        // ล้างตัวแปรส่วนกลาง
+        cartItems  = [];
+        totalPrice = 0;
+        totalCount = 0;
+        freePid    = "";
+
+        // วาดตารางใหม่ (แสดงสินค้าทั้งหมด)
+        renderProductTable(allProducts);
+
+        // กลับไป Step 0
+        showStep(0);
+    }
+    </script>
+</head>
+
+<body onload="loadProducts()">
+<h2>Blueshop</h2>
+
+<!-- ################################################################### -->
+<!-- สเต็ป 0: หน้าเลือกประเภทลูกค้า + เลือกสินค้า + กรอกจำนวน          -->
+<!-- ################################################################### -->
+<div id="step0">
+
+    <!-- ==================== ส่วนเลือกประเภทลูกค้า ==================== -->
+    <!-- วิธีที่ 1: เลือกจาก Radio Button (แบบดั้งเดิมตามโจทย์) -->
+    ประเภทลูกค้า:
+    <input type="radio" name="member" value="1" checked> สมาชิก
+    <input type="radio" name="member" value="0"> ไม่ใช่สมาชิก
+    <br><br>
+
+    <!-- วิธีที่ 2: กรอก username ตรวจสอบจากฐานข้อมูล (เตรียมไว้กรณีโจทย์เพิ่ม) -->
+    ตรวจสอบสมาชิก (username):
+    <input type="text" id="username-input" placeholder="เช่น somsak">
+    <button type="button" onclick="checkMemberFromDB()">ตรวจสอบ</button>
+    <span id="member-check-result"></span>
+    <br><br>
+
+    <!-- ==================== ส่วนค้นหาสินค้า ==================== -->
+    ค้นหาสินค้า:
+    <input type="text" id="search-box" placeholder="พิมพ์ชื่อสินค้า..." onkeyup="searchProduct()">
+    <br><br>
+
+    <!-- ==================== ตารางรายการสินค้า ==================== -->
+    <table border="1" cellpadding="5">
+        <thead>
+            <tr>
+                <th>สินค้า</th>
+                <th>ราคา</th>
+                <th>รายละเอียด</th>
+                <th>จำนวน</th>
+                <th>จัดการ</th>
+            </tr>
+        </thead>
+        <tbody id="product-tbody">
+            <!-- สร้างจาก JavaScript ฟังก์ชัน renderProductTable() -->
+            <tr><td colspan="5" align="center">กำลังโหลด...</td></tr>
+        </tbody>
+    </table>
+    <br>
+
+    <button type="button" onclick="goToStep1()">ตกลง</button>
+    <button type="button" onclick="clearAllItems()">ล้างรายการทั้งหมด</button>
+</div>
+
+
+<!-- ################################################################### -->
+<!-- สเต็ป 1: หน้าแสดงยอดรวม + ตรวจสิทธิ์ + เลือกของแถม                -->
+<!-- ################################################################### -->
+<div id="step1" style="display:none">
+
+    <p>ประเภทลูกค้า: <b id="show-member-type"></b></p>
+
+    <!-- แสดงรายการสินค้าที่ซื้อ -->
+    <div id="show-bought-items"></div>
+
+    <p>ยอดซื้อรวม: <b id="show-total">0</b> บาท</p>
+
+    <!-- พื้นที่แสดงตัวเลือกของแถม (สร้างจาก renderGiftDropdown) -->
+    <div id="gift-area"></div>
+
+    <br>
+    <button type="button" onclick="goToStep2()">ยืนยัน</button>
+    <button type="button" onclick="showStep(0)">กลับ</button>
+</div>
+
+
+<!-- ################################################################### -->
+<!-- สเต็ป 2: หน้าสรุปรายการ + ยอดชำระ + บันทึกลง DB                    -->
+<!-- ################################################################### -->
+<div id="step2" style="display:none">
+
+    <h3>สรุปรายการ</h3>
+    <p>ประเภทลูกค้า: <b id="summary-member"></b></p>
+
+    <ul id="summary-list">
+        <!-- สร้างจาก JavaScript ฟังก์ชัน goToStep2() -->
+    </ul>
+
+    <div id="free-info"></div>
+
+    <p>ยอดชำระทั้งสิ้น: <b id="final-total">0</b> บาท</p>
+
+    <!-- ปุ่มบันทึกลงฐานข้อมูล (เตรียมไว้กรณีโจทย์สั่งให้บันทึก) -->
+    <button type="button" onclick="saveOrderToDB()">บันทึกคำสั่งซื้อ</button>
+    <button type="button" onclick="resetToStart()">กลับหน้าแรก</button>
+</div>
+
+</body>
+</html>
